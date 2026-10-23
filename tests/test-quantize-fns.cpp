@@ -29,6 +29,19 @@ constexpr float MAX_DOT_PRODUCT_ERROR_LOWBIT = 0.04f;
 constexpr float MAX_DOT_PRODUCT_ERROR_FP4 = 0.03f;
 constexpr float MAX_DOT_PRODUCT_ERROR_BINARY = 0.40f;
 constexpr float MAX_DOT_PRODUCT_ERROR_TERNARY = 0.15f;
+constexpr float MAX_DOT_PRODUCT_ERROR_2PLANES = 0.06f; // ShiftAdd with 2 bit-planes: 4 levels per group, like a 2-bit grid without minimums
+
+// ShiftAdd / BCQ types: number of bit-planes (0 for other types)
+static int sa_bit_planes(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_SA2: case GGML_TYPE_SA2_128: case GGML_TYPE_SA2_256: return 2;
+        case GGML_TYPE_SA3: case GGML_TYPE_SA3_128: case GGML_TYPE_SA3_256: return 3;
+        case GGML_TYPE_SA4: case GGML_TYPE_SA4_128: case GGML_TYPE_SA4_256: return 4;
+        case GGML_TYPE_SA5: case GGML_TYPE_SA5_128: case GGML_TYPE_SA5_256: return 5;
+        case GGML_TYPE_SA6: case GGML_TYPE_SA6_128: case GGML_TYPE_SA6_256: return 6;
+        default: return 0;
+    }
+}
 
 static const char* RESULT_STR[] = {"ok", "FAILED"};
 
@@ -197,7 +210,9 @@ static int test_vec_dot_q(bool verbose) {
                 type == GGML_TYPE_Q3_K    ? MAX_QUANTIZATION_TOTAL_ERROR_3BITS :
                 type == GGML_TYPE_IQ3_S   ? MAX_QUANTIZATION_TOTAL_ERROR_3BITS :
                 type == GGML_TYPE_IQ3_XXS ? MAX_QUANTIZATION_TOTAL_ERROR_3BITS_XXS :
-                type == GGML_TYPE_NVFP4   ? MAX_QUANTIZATION_TOTAL_ERROR_FP4 : MAX_QUANTIZATION_TOTAL_ERROR;
+                type == GGML_TYPE_NVFP4   ? MAX_QUANTIZATION_TOTAL_ERROR_FP4 :
+                sa_bit_planes(type) == 2  ? MAX_QUANTIZATION_TOTAL_ERROR_2BITS :
+                sa_bit_planes(type) == 3  ? MAX_QUANTIZATION_TOTAL_ERROR_3BITS : MAX_QUANTIZATION_TOTAL_ERROR;
             bool failed = !(total_error < max_quantization_error);
             num_failed += failed;
             if (failed || verbose) {
@@ -213,8 +228,10 @@ static int test_vec_dot_q(bool verbose) {
 
             const float vec_dot_error = dot_product_error(qfns_cpu, type, test_size, test_data.data(), test_data2.data(), nullptr, nullptr, 1);
             const float max_allowed_error = type == GGML_TYPE_Q2_K || type == GGML_TYPE_IQ2_XS || type == GGML_TYPE_IQ2_XXS ||
-                type == GGML_TYPE_IQ3_XXS || type == GGML_TYPE_IQ3_S || type == GGML_TYPE_IQ2_S
+                type == GGML_TYPE_IQ3_XXS || type == GGML_TYPE_IQ3_S || type == GGML_TYPE_IQ2_S || sa_bit_planes(type) == 3
                 ? MAX_DOT_PRODUCT_ERROR_LOWBIT
+                : sa_bit_planes(type) == 2
+                ? MAX_DOT_PRODUCT_ERROR_2PLANES
                 : type == GGML_TYPE_Q1_0
                 ? MAX_DOT_PRODUCT_ERROR_BINARY
                 : type == GGML_TYPE_TQ1_0 || type == GGML_TYPE_TQ2_0 || type == GGML_TYPE_Q2_0

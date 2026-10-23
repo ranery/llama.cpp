@@ -1682,6 +1682,84 @@ void ggml_vec_dot_tq2_0_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 #endif
 }
 
+// ShiftAdd / BCQ: sign-select the q8 activations with each bit-plane, sum, and weight by the plane scale code
+#if defined(__ARM_NEON) && defined(__aarch64__)
+static inline float ggml_vec_dot_sa_q8_0_neon(int n, const uint8_t * GGML_RESTRICT x, const block_q8_0 * GGML_RESTRICT y, int Q, int G) {
+    const int ng = QK_SA / G;
+    const size_t bsz = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int nb = n / QK_SA;
+
+    // byte j of a 32-weight chunk takes bit j%8 of sign byte j/8
+    static const uint8_t shuf_lo[16] = {0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1};
+    static const uint8_t shuf_hi[16] = {2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3};
+    static const uint8_t bits_tab[16] = {1,2,4,8,16,32,64,128, 1,2,4,8,16,32,64,128};
+    const uint8x16_t slo  = vld1q_u8(shuf_lo);
+    const uint8x16_t shi  = vld1q_u8(shuf_hi);
+    const uint8x16_t bits = vld1q_u8(bits_tab);
+
+    float sumf = 0.0f;
+    for (int i = 0; i < nb; ++i) {
+        const uint8_t * qs = x + i*bsz;
+        const uint8_t * a  = qs + Q*QK_SA/8;
+        ggml_half dh; memcpy(&dh, a + Q*ng, sizeof(dh));
+        const float d = GGML_CPU_FP16_TO_FP32(dh);
+
+        float32x4_t acc = vdupq_n_f32(0.0f);
+        for (int c = 0; c < QK_SA/32; ++c) {
+            const block_q8_0 * yb = &y[i*(QK_SA/32) + c];
+            const int8x16_t y0 = vld1q_s8(yb->qs);
+            const int8x16_t y1 = vld1q_s8(yb->qs + 16);
+            const int8x16_t n0 = vnegq_s8(y0);
+            const int8x16_t n1 = vnegq_s8(y1);
+            const int g = c*32/G;
+
+            int32x4_t acci = vdupq_n_s32(0);
+            for (int p = 0; p < Q; ++p) {
+                uint32_t w; memcpy(&w, qs + p*32 + c*4, sizeof(w));
+                const uint8x16_t wv = vreinterpretq_u8_u32(vdupq_n_u32(w));
+                const uint8x16_t m0 = vceqq_u8(vandq_u8(vqtbl1q_u8(wv, slo), bits), bits);
+                const uint8x16_t m1 = vceqq_u8(vandq_u8(vqtbl1q_u8(wv, shi), bits), bits);
+                const int8x16_t  v0 = vbslq_s8(m0, y0, n0);
+                const int8x16_t  v1 = vbslq_s8(m1, y1, n1);
+                const int16x8_t s16 = vaddq_s16(vpaddlq_s8(v0), vpaddlq_s8(v1));
+                acci = vmlaq_n_s32(acci, vpaddlq_s16(s16), (int32_t) a[g*Q + p]);
+            }
+            acc = vmlaq_n_f32(acc, vcvtq_f32_s32(acci), GGML_CPU_FP16_TO_FP32(yb->d));
+        }
+        sumf += d * vaddvq_f32(acc);
+    }
+    return sumf;
+}
+
+#define GGML_SA_VEC_DOT(name, Q, G)                                                                                                                              \
+void ggml_vec_dot_##name##_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) { \
+    assert(nrc == 1);                                                                                                                                            \
+    UNUSED(nrc); UNUSED(bx); UNUSED(by); UNUSED(bs);                                                                                                             \
+    *s = ggml_vec_dot_sa_q8_0_neon(n, (const uint8_t *) vx, (const block_q8_0 *) vy, Q, G);                                                                      \
+}
+#else
+#define GGML_SA_VEC_DOT(name, Q, G)                                                                                                                              \
+void ggml_vec_dot_##name##_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) { \
+    ggml_vec_dot_##name##_q8_0_generic(n, s, bs, vx, bx, vy, by, nrc);                                                                                           \
+}
+#endif
+
+GGML_SA_VEC_DOT(sa2, SA2_Q, SA2_G)
+GGML_SA_VEC_DOT(sa3, SA3_Q, SA3_G)
+GGML_SA_VEC_DOT(sa4, SA4_Q, SA4_G)
+GGML_SA_VEC_DOT(sa2_128, SA2_128_Q, SA2_128_G)
+GGML_SA_VEC_DOT(sa3_128, SA3_128_Q, SA3_128_G)
+GGML_SA_VEC_DOT(sa4_128, SA4_128_Q, SA4_128_G)
+GGML_SA_VEC_DOT(sa2_256, SA2_256_Q, SA2_256_G)
+GGML_SA_VEC_DOT(sa3_256, SA3_256_Q, SA3_256_G)
+GGML_SA_VEC_DOT(sa4_256, SA4_256_Q, SA4_256_G)
+GGML_SA_VEC_DOT(sa5, SA5_Q, SA5_G)
+GGML_SA_VEC_DOT(sa5_128, SA5_128_Q, SA5_128_G)
+GGML_SA_VEC_DOT(sa5_256, SA5_256_Q, SA5_256_G)
+GGML_SA_VEC_DOT(sa6, SA6_Q, SA6_G)
+GGML_SA_VEC_DOT(sa6_128, SA6_128_Q, SA6_128_G)
+GGML_SA_VEC_DOT(sa6_256, SA6_256_Q, SA6_256_G)
+
 void ggml_vec_dot_q2_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);

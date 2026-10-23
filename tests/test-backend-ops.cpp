@@ -9910,6 +9910,11 @@ static const ggml_type all_types[] = {
     GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ2_XS, GGML_TYPE_IQ2_S,
     GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M,
     GGML_TYPE_IQ4_NL, GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
+    GGML_TYPE_SA2, GGML_TYPE_SA2_128, GGML_TYPE_SA2_256,
+    GGML_TYPE_SA3, GGML_TYPE_SA3_128, GGML_TYPE_SA3_256,
+    GGML_TYPE_SA4, GGML_TYPE_SA4_128, GGML_TYPE_SA4_256,
+    GGML_TYPE_SA5, GGML_TYPE_SA5_128, GGML_TYPE_SA5_256,
+    GGML_TYPE_SA6, GGML_TYPE_SA6_128, GGML_TYPE_SA6_256,
 };
 
 static const ggml_type base_types[] = {
@@ -9939,6 +9944,11 @@ static const ggml_type other_types[] = {
     GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M,
     GGML_TYPE_IQ4_NL, GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
     GGML_TYPE_BF16,
+    GGML_TYPE_SA2, GGML_TYPE_SA2_128, GGML_TYPE_SA2_256,
+    GGML_TYPE_SA3, GGML_TYPE_SA3_128, GGML_TYPE_SA3_256,
+    GGML_TYPE_SA4, GGML_TYPE_SA4_128, GGML_TYPE_SA4_256,
+    GGML_TYPE_SA5, GGML_TYPE_SA5_128, GGML_TYPE_SA5_256,
+    GGML_TYPE_SA6, GGML_TYPE_SA6_128, GGML_TYPE_SA6_256,
 };
 
 #ifdef _MSC_VER
@@ -11104,7 +11114,10 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
                                  GGML_TYPE_Q8_0, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0, GGML_TYPE_MXFP4, GGML_TYPE_Q2_K, GGML_TYPE_Q3_K,
                                  GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_TQ2_0,
                                  GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ2_XS, GGML_TYPE_IQ2_S, GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ3_S,
-                                 GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M, GGML_TYPE_IQ4_NL, GGML_TYPE_IQ4_XS}) {
+                                 GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M, GGML_TYPE_IQ4_NL, GGML_TYPE_IQ4_XS,
+                                 GGML_TYPE_SA2, GGML_TYPE_SA2_128, GGML_TYPE_SA2_256, GGML_TYPE_SA3, GGML_TYPE_SA3_128, GGML_TYPE_SA3_256,
+                                 GGML_TYPE_SA4, GGML_TYPE_SA4_128, GGML_TYPE_SA4_256, GGML_TYPE_SA5, GGML_TYPE_SA5_128, GGML_TYPE_SA5_256,
+                                 GGML_TYPE_SA6, GGML_TYPE_SA6_128, GGML_TYPE_SA6_256}) {
             test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, 48,  n, 2560, {1, 1}, {1, 1}));
             test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, 1000, n, 1024, {1, 1}, {1, 1}));
             test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, 3000, n, 512,  {1, 1}, {1, 1}));

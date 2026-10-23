@@ -2111,6 +2111,158 @@ size_t quantize_q1_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
     return nrow * row_size;
 }
 
+// ====================== ShiftAdd / BCQ (sa2 .. sa6, group 64 / 128 / 256) ======================
+// Generic over Q (bit-planes) and G (alpha group size); block layout: qs[Q*32] | a[Q*256/G] | d.
+
+static void sa_dequant_row(const uint8_t * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k, int Q, int G) {
+    assert(k % QK_SA == 0);
+    const int ng = QK_SA / G;
+    const size_t bs = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int64_t nb = k / QK_SA;
+    for (int64_t i = 0; i < nb; ++i) {
+        const uint8_t * qs = x + i*bs;
+        const uint8_t * a  = qs + Q*QK_SA/8;
+        ggml_half dh; memcpy(&dh, a + Q*ng, sizeof(dh));
+        const float d = GGML_FP16_TO_FP32(dh);
+        for (int j = 0; j < QK_SA; ++j) {
+            const int g = j / G;
+            float v = 0.0f;
+            for (int p = 0; p < Q; ++p) {
+                const float al = d * a[g*Q + p];
+                v += ((qs[p*32 + j/8] >> (j%8)) & 1) ? al : -al;
+            }
+            y[i*QK_SA + j] = v;
+        }
+    }
+}
+
+// nearest of the 2^Q levels sum_p +-alpha_p; returns code with bit p set for +alpha_p
+static inline int sa_nearest(float w, const float * alpha, int Q) {
+    int best = 0; float bestd = INFINITY;
+    for (int c = 0; c < (1 << Q); ++c) {
+        float v = 0.0f;
+        for (int p = 0; p < Q; ++p) v += ((c >> p) & 1) ? alpha[p] : -alpha[p];
+        const float dd = fabsf(w - v);
+        if (dd < bestd) { bestd = dd; best = c; }
+    }
+    return best;
+}
+
+// greedy BCQ init + alternating LS refinement for one group of n weights (optional importance)
+static void sa_fit_group(const float * w, const float * imp, int n, int Q, float * alpha, float * r) {
+    float sw = 0.0f;
+    for (int j = 0; j < n; ++j) { r[j] = w[j]; sw += imp ? imp[j] : 1.0f; }
+    if (sw <= 0.0f) sw = 1.0f;
+    for (int p = 0; p < Q; ++p) {
+        float s = 0.0f;
+        for (int j = 0; j < n; ++j) s += (imp ? imp[j] : 1.0f) * fabsf(r[j]);
+        alpha[p] = s / sw;
+        for (int j = 0; j < n; ++j) r[j] -= r[j] >= 0 ? alpha[p] : -alpha[p];
+    }
+    for (int it = 0; it < 4; ++it) {
+        float A[8][9] = {{0}};
+        for (int j = 0; j < n; ++j) {
+            const int c = sa_nearest(w[j], alpha, Q);
+            const float h = imp ? imp[j] : 1.0f;
+            float b[8];
+            for (int p = 0; p < Q; ++p) b[p] = ((c >> p) & 1) ? 1.0f : -1.0f;
+            for (int p = 0; p < Q; ++p) {
+                for (int q = 0; q < Q; ++q) A[p][q] += h*b[p]*b[q];
+                A[p][Q] += h*b[p]*w[j];
+            }
+        }
+        // Gaussian elimination with partial pivoting
+        bool ok = true;
+        for (int p = 0; p < Q && ok; ++p) {
+            int piv = p;
+            for (int q = p + 1; q < Q; ++q) if (fabsf(A[q][p]) > fabsf(A[piv][p])) piv = q;
+            if (fabsf(A[piv][p]) < 1e-20f) { ok = false; break; }
+            if (piv != p) for (int c = 0; c <= Q; ++c) { float t = A[p][c]; A[p][c] = A[piv][c]; A[piv][c] = t; }
+            for (int q = 0; q < Q; ++q) {
+                if (q == p) continue;
+                const float f = A[q][p] / A[p][p];
+                for (int c = p; c <= Q; ++c) A[q][c] -= f*A[p][c];
+            }
+        }
+        if (!ok) break;
+        for (int p = 0; p < Q; ++p) alpha[p] = fabsf(A[p][Q] / A[p][p]);
+        // sort descending (sign folded into the bit-planes)
+        for (int p = 0; p < Q; ++p) for (int q = p + 1; q < Q; ++q)
+            if (alpha[q] > alpha[p]) { float t = alpha[p]; alpha[p] = alpha[q]; alpha[q] = t; }
+    }
+}
+
+static void sa_quant_row(const float * GGML_RESTRICT x, uint8_t * GGML_RESTRICT y, int64_t k, int Q, int G, const float * imp) {
+    assert(k % QK_SA == 0);
+    const int ng = QK_SA / G;
+    const size_t bs = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int64_t nb = k / QK_SA;
+    float alpha[8*8];
+    float r[QK_SA];
+    for (int64_t i = 0; i < nb; ++i) {
+        const float * xb = x + i*QK_SA;
+        uint8_t * qs = y + i*bs;
+        uint8_t * a  = qs + Q*QK_SA/8;
+        float amax = 0.0f;
+        for (int g = 0; g < ng; ++g) {
+            sa_fit_group(xb + g*G, imp ? imp + g*G : NULL, G, Q, alpha + g*Q, r);
+            for (int p = 0; p < Q; ++p) amax = MAX(amax, alpha[g*Q + p]);
+        }
+        const float d = amax / 255.0f;
+        const ggml_half dh = GGML_FP32_TO_FP16(d);
+        memcpy(a + Q*ng, &dh, sizeof(dh));
+        const float dq = GGML_FP16_TO_FP32(dh);
+        const float id = dq > 0 ? 1.0f/dq : 0.0f;
+        memset(qs, 0, Q*QK_SA/8);
+        for (int g = 0; g < ng; ++g) {
+            float aq[8];
+            for (int p = 0; p < Q; ++p) {
+                const int c = MIN(255, MAX(0, (int) nearbyintf(alpha[g*Q + p]*id)));
+                a[g*Q + p] = (uint8_t) c;
+                aq[p] = dq*c;
+            }
+            for (int j = g*G; j < (g + 1)*G; ++j) {
+                const int c = sa_nearest(xb[j], aq, Q);
+                for (int p = 0; p < Q; ++p) if ((c >> p) & 1) qs[p*32 + j/8] |= (uint8_t)(1 << (j%8));
+            }
+        }
+    }
+}
+
+#define GGML_SA_IMPL(name, TYPE, Q, G)                                                                                  \
+void quantize_row_##name##_ref(const float * GGML_RESTRICT x, block_##name * GGML_RESTRICT y, int64_t k) {             \
+    sa_quant_row(x, (uint8_t *) y, k, Q, G, NULL);                                                                      \
+}                                                                                                                       \
+void dequantize_row_##name(const block_##name * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {                 \
+    sa_dequant_row((const uint8_t *) x, y, k, Q, G);                                                                    \
+}                                                                                                                       \
+size_t quantize_##name(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrow, int64_t n_per_row,     \
+                       const float * quant_weights) {                                                                   \
+    const size_t row_size = ggml_row_size(TYPE, n_per_row);                                                             \
+    char * qrow = (char *) dst;                                                                                         \
+    for (int64_t row = 0; row < nrow; ++row) {                                                                          \
+        sa_quant_row(src + row*n_per_row, (uint8_t *) qrow, n_per_row, Q, G, quant_weights);                            \
+        qrow += row_size;                                                                                               \
+    }                                                                                                                   \
+    return nrow * row_size;                                                                                             \
+}
+
+GGML_SA_IMPL(sa2, GGML_TYPE_SA2, SA2_Q, SA2_G)
+GGML_SA_IMPL(sa3, GGML_TYPE_SA3, SA3_Q, SA3_G)
+GGML_SA_IMPL(sa4, GGML_TYPE_SA4, SA4_Q, SA4_G)
+GGML_SA_IMPL(sa2_128, GGML_TYPE_SA2_128, SA2_128_Q, SA2_128_G)
+GGML_SA_IMPL(sa3_128, GGML_TYPE_SA3_128, SA3_128_Q, SA3_128_G)
+GGML_SA_IMPL(sa4_128, GGML_TYPE_SA4_128, SA4_128_Q, SA4_128_G)
+GGML_SA_IMPL(sa2_256, GGML_TYPE_SA2_256, SA2_256_Q, SA2_256_G)
+GGML_SA_IMPL(sa3_256, GGML_TYPE_SA3_256, SA3_256_Q, SA3_256_G)
+GGML_SA_IMPL(sa4_256, GGML_TYPE_SA4_256, SA4_256_Q, SA4_256_G)
+GGML_SA_IMPL(sa5, GGML_TYPE_SA5, SA5_Q, SA5_G)
+GGML_SA_IMPL(sa5_128, GGML_TYPE_SA5_128, SA5_128_Q, SA5_128_G)
+GGML_SA_IMPL(sa5_256, GGML_TYPE_SA5_256, SA5_256_Q, SA5_256_G)
+GGML_SA_IMPL(sa6, GGML_TYPE_SA6, SA6_Q, SA6_G)
+GGML_SA_IMPL(sa6_128, GGML_TYPE_SA6_128, SA6_128_Q, SA6_128_G)
+GGML_SA_IMPL(sa6_256, GGML_TYPE_SA6_256, SA6_256_Q, SA6_256_G)
+
 size_t quantize_q2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
     if (!quant_weights) {
         quantize_row_q2_0_ref(src, dst, (int64_t)nrow*n_per_row);
@@ -5508,6 +5660,156 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
         case GGML_TYPE_Q2_0:
             {
                 VALIDATE_ROW_DATA_D_F16_IMPL(block_q2_0, data, nb);
+            } break;
+        case GGML_TYPE_SA2:
+            {
+                const block_sa2 * q = (const block_sa2 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA3:
+            {
+                const block_sa3 * q = (const block_sa3 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA4:
+            {
+                const block_sa4 * q = (const block_sa4 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA2_128:
+            {
+                const block_sa2_128 * q = (const block_sa2_128 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA3_128:
+            {
+                const block_sa3_128 * q = (const block_sa3_128 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA4_128:
+            {
+                const block_sa4_128 * q = (const block_sa4_128 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA2_256:
+            {
+                const block_sa2_256 * q = (const block_sa2_256 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA3_256:
+            {
+                const block_sa3_256 * q = (const block_sa3_256 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA4_256:
+            {
+                const block_sa4_256 * q = (const block_sa4_256 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA5:
+            {
+                const block_sa5 * q = (const block_sa5 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA5_128:
+            {
+                const block_sa5_128 * q = (const block_sa5_128 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA5_256:
+            {
+                const block_sa5_256 * q = (const block_sa5_256 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA6:
+            {
+                const block_sa6 * q = (const block_sa6 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA6_128:
+            {
+                const block_sa6_128 * q = (const block_sa6_128 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
+            } break;
+        case GGML_TYPE_SA6_256:
+            {
+                const block_sa6_256 * q = (const block_sa6_256 *) data;
+                for (size_t i = 0; i < nb; ++i) {
+                    ggml_half d; memcpy(&d, q[i].d, sizeof(d));
+                    if (!validate_fp16(d, i)) {
+                        return false;
+                    }
+                }
             } break;
         case GGML_TYPE_Q4_0:
             {

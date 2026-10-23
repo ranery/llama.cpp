@@ -1429,3 +1429,130 @@ class IQ4_XS(__Quant, qtype=GGMLQuantizationType.IQ4_XS):
         qs = np.take_along_axis(kvalues, qs, axis=-1).astype(np.float32).reshape((n_blocks, -1, 32))
 
         return (dl * qs).reshape((n_blocks, -1))
+
+
+class _SABase:
+    """ShiftAdd / BCQ super-block of 256: qs[Q*32] bit-planes | a[Q*256/G] uint8 alpha codes | d fp16.
+    w_j = sum_p d*a[g*Q+p] * (+1 if bit_{p,j} else -1),  g = j // G."""
+    Q = 3
+    G = 64
+
+    @classmethod
+    def pack(cls, bits: np.ndarray, codes: np.ndarray, d: np.ndarray) -> np.ndarray:
+        """bits [n, Q, 256] in {0,1}; codes [n, 256//G, Q] uint8; d [n] float -> raw blocks [n, type_size]"""
+        n = bits.shape[0]
+        qs = np.packbits(bits.astype(np.uint8).reshape(n, cls.Q, 32, 8), axis=-1, bitorder="little").reshape(n, -1)
+        a = codes.astype(np.uint8).reshape(n, -1)
+        dd = d.astype(np.float16).reshape(n, 1).view(np.uint8)
+        return np.concatenate([qs, a, dd], axis=-1)
+
+    @classmethod
+    def quantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        # greedy BCQ per group (reference only; real models are exported from the calibrated quantizer)
+        n = blocks.shape[0]
+        Q, G = cls.Q, cls.G
+        w = blocks.reshape(n, 256 // G, G).astype(np.float32)
+        r = w.copy()
+        alphas = []
+        for _ in range(Q):
+            a = np.abs(r).mean(-1, keepdims=True)
+            r = r - a * np.where(r >= 0, 1.0, -1.0)
+            alphas.append(a[..., 0])
+        alpha = np.stack(alphas, -1)  # [n, ng, Q]
+        d = alpha.reshape(n, -1).max(-1) / 255.0
+        d = d.astype(np.float16).astype(np.float32)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            codes = np.clip(np.round(np.where(d[:, None, None] > 0, alpha / d[:, None, None], 0)), 0, 255)
+        aq = codes * d[:, None, None]
+        signs = np.array([[1 if (c >> p) & 1 else -1 for p in range(Q)] for c in range(2 ** Q)], dtype=np.float32)
+        levels = aq @ signs.T  # [n, ng, 2^Q]
+        idx = np.abs(w[..., None] - levels[:, :, None, :]).argmin(-1)  # [n, ng, G]
+        bits = ((idx.reshape(n, 256)[:, None, :] >> np.arange(Q)[None, :, None]) & 1)
+        return cls.pack(bits, codes, d)
+
+    @classmethod
+    def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        n = blocks.shape[0]
+        Q, G = cls.Q, cls.G
+        qs, a, d = np.hsplit(blocks, [Q * 32, Q * 32 + Q * (256 // G)])
+        d = d.view(np.float16).astype(np.float32)  # [n, 1]
+        bits = np.unpackbits(qs.reshape(n, Q, 32), axis=-1, bitorder="little").astype(np.float32)  # [n, Q, 256]
+        s = bits * 2 - 1
+        alpha = a.reshape(n, 256 // G, Q).astype(np.float32) * d[:, :, None]
+        alpha = np.repeat(alpha, G, axis=1)  # [n, 256, Q]
+        return (s.transpose(0, 2, 1) * alpha).sum(-1)
+
+
+class SA2(_SABase, __Quant, qtype=GGMLQuantizationType.SA2):
+    Q = 2
+    G = 64
+
+
+class SA3(_SABase, __Quant, qtype=GGMLQuantizationType.SA3):
+    Q = 3
+    G = 64
+
+
+class SA4(_SABase, __Quant, qtype=GGMLQuantizationType.SA4):
+    Q = 4
+    G = 64
+
+
+class SA2_128(_SABase, __Quant, qtype=GGMLQuantizationType.SA2_128):
+    Q = 2
+    G = 128
+
+
+class SA3_128(_SABase, __Quant, qtype=GGMLQuantizationType.SA3_128):
+    Q = 3
+    G = 128
+
+
+class SA4_128(_SABase, __Quant, qtype=GGMLQuantizationType.SA4_128):
+    Q = 4
+    G = 128
+
+
+class SA2_256(_SABase, __Quant, qtype=GGMLQuantizationType.SA2_256):
+    Q = 2
+    G = 256
+
+
+class SA3_256(_SABase, __Quant, qtype=GGMLQuantizationType.SA3_256):
+    Q = 3
+    G = 256
+
+
+class SA4_256(_SABase, __Quant, qtype=GGMLQuantizationType.SA4_256):
+    Q = 4
+    G = 256
+
+
+class SA5(_SABase, __Quant, qtype=GGMLQuantizationType.SA5):
+    Q = 5
+    G = 64
+
+
+class SA5_128(_SABase, __Quant, qtype=GGMLQuantizationType.SA5_128):
+    Q = 5
+    G = 128
+
+
+class SA5_256(_SABase, __Quant, qtype=GGMLQuantizationType.SA5_256):
+    Q = 5
+    G = 256
+
+
+class SA6(_SABase, __Quant, qtype=GGMLQuantizationType.SA6):
+    Q = 6
+    G = 64
+
+
+class SA6_128(_SABase, __Quant, qtype=GGMLQuantizationType.SA6_128):
+    Q = 6
+    G = 128
+
+
+class SA6_256(_SABase, __Quant, qtype=GGMLQuantizationType.SA6_256):
+    Q = 6
+    G = 256

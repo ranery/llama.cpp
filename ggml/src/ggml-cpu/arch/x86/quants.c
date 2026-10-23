@@ -1635,6 +1635,126 @@ void ggml_vec_dot_tq2_0_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 #endif
 }
 
+// ShiftAdd / BCQ: per 32-weight chunk and bit-plane, sum_j s_j*y_j = 2*sum_{bit=1} y_j - sum_j y_j, weighted by the plane scale code
+#if defined(__AVX512BW__) && defined(__AVX512VNNI__)
+static inline float ggml_vec_dot_sa_q8_0_avx512(int n, const uint8_t * GGML_RESTRICT x, const block_q8_0 * GGML_RESTRICT y, int Q, int G) {
+    // 64 weights (two q8 chunks) per op: the sign bits form a 64-bit mask that zero-fills the broadcast plane scale code
+    const int ng = QK_SA / G;
+    const size_t bsz = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int nb = n / QK_SA;
+    const __m512i ones = _mm512_set1_epi8(1);
+
+    __m256 sumf = _mm256_setzero_ps();
+    for (int i = 0; i < nb; ++i) {
+        const uint8_t * qs = x + i*bsz;
+        const uint8_t * a  = qs + Q*QK_SA/8;
+        ggml_half dh; memcpy(&dh, a + Q*ng, sizeof(dh));
+        const float d = GGML_CPU_FP16_TO_FP32(dh);
+
+        __m256 acc = _mm256_setzero_ps();
+        for (int c = 0; c < QK_SA/32; c += 2) {
+            const block_q8_0 * yb = &y[i*(QK_SA/32) + c];
+            const __m512i yv = _mm512_inserti64x4(_mm512_castsi256_si512(_mm256_loadu_si256((const __m256i *) yb[0].qs)),
+                                                  _mm256_loadu_si256((const __m256i *) yb[1].qs), 1);
+            const uint8_t * ag = a + (c*32/G)*Q;
+
+            __m512i pos = _mm512_setzero_si512();
+            int asum = 0;
+            for (int p = 0; p < Q; ++p) {
+                uint64_t w; memcpy(&w, qs + p*32 + c*4, sizeof(w));
+                pos = _mm512_dpbusd_epi32(pos, _mm512_maskz_set1_epi8(_cvtu64_mask64(w), (char) ag[p]), yv);
+                asum += ag[p];
+            }
+            const __m512i ysum = _mm512_madd_epi16(_mm512_maddubs_epi16(ones, yv), _mm512_set1_epi16(asum));
+            const __m512i acci = _mm512_sub_epi32(_mm512_add_epi32(pos, pos), ysum);
+            acc = _mm256_add_ps(acc, _mm256_mul_ps(_mm256_set1_ps(GGML_CPU_FP16_TO_FP32(yb[0].d)), _mm256_cvtepi32_ps(_mm512_castsi512_si256(acci))));
+            acc = _mm256_add_ps(acc, _mm256_mul_ps(_mm256_set1_ps(GGML_CPU_FP16_TO_FP32(yb[1].d)), _mm256_cvtepi32_ps(_mm512_extracti64x4_epi64(acci, 1))));
+        }
+        sumf = _mm256_add_ps(sumf, _mm256_mul_ps(_mm256_set1_ps(d), acc));
+    }
+    return hsum_float_8(sumf);
+}
+#elif defined(__AVX2__)
+static inline float ggml_vec_dot_sa_q8_0_avx2(int n, const uint8_t * GGML_RESTRICT x, const block_q8_0 * GGML_RESTRICT y, int Q, int G) {
+    const int ng = QK_SA / G;
+    const size_t bsz = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int nb = n / QK_SA;
+    const __m256i ones = _mm256_set1_epi8(1);
+
+    __m256 sumf = _mm256_setzero_ps();
+    for (int i = 0; i < nb; ++i) {
+        const uint8_t * qs = x + i*bsz;
+        const uint8_t * a  = qs + Q*QK_SA/8;
+        ggml_half dh; memcpy(&dh, a + Q*ng, sizeof(dh));
+        const float d = GGML_CPU_FP16_TO_FP32(dh);
+
+        __m256 acc = _mm256_setzero_ps();
+        for (int c = 0; c < QK_SA/32; ++c) {
+            const block_q8_0 * yb = &y[i*(QK_SA/32) + c];
+            const __m256i yv = _mm256_loadu_si256((const __m256i *) yb->qs);
+            const uint8_t * ag = a + (c*32/G)*Q;
+
+            __m256i pos = _mm256_setzero_si256();
+            int asum = 0;
+            for (int p = 0; p < Q; ++p) {
+                const __m256i m = bytes_from_bits_32(qs + p*32 + c*4);
+                asum += ag[p];
+#if defined(__AVX512VNNI__) && defined(__AVX512VL__)
+                pos = _mm256_dpbusd_epi32(pos, _mm256_and_si256(m, _mm256_set1_epi8((char) ag[p])), yv);
+#elif defined(__AVXVNNI__)
+                pos = _mm256_dpbusd_avx_epi32(pos, _mm256_and_si256(m, _mm256_set1_epi8((char) ag[p])), yv);
+#else
+                const __m256i sel = _mm256_maddubs_epi16(_mm256_and_si256(m, ones), yv);
+                pos = _mm256_add_epi32(pos, _mm256_madd_epi16(sel, _mm256_set1_epi16(ag[p])));
+#endif
+            }
+            const __m256i ysum = _mm256_madd_epi16(_mm256_maddubs_epi16(ones, yv), _mm256_set1_epi16(asum));
+            const __m256i acci = _mm256_sub_epi32(_mm256_add_epi32(pos, pos), ysum);
+            acc = _mm256_add_ps(acc, _mm256_mul_ps(_mm256_set1_ps(GGML_CPU_FP16_TO_FP32(yb->d)), _mm256_cvtepi32_ps(acci)));
+        }
+        sumf = _mm256_add_ps(sumf, _mm256_mul_ps(_mm256_set1_ps(d), acc));
+    }
+    return hsum_float_8(sumf);
+}
+#endif
+
+#if defined(__AVX512BW__) && defined(__AVX512VNNI__)
+#define GGML_SA_VEC_DOT(name, Q, G)                                                                                                                              \
+void ggml_vec_dot_##name##_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) { \
+    assert(nrc == 1);                                                                                                                                            \
+    UNUSED(nrc); UNUSED(bx); UNUSED(by); UNUSED(bs);                                                                                                             \
+    *s = ggml_vec_dot_sa_q8_0_avx512(n, (const uint8_t *) vx, (const block_q8_0 *) vy, Q, G);                                                                    \
+}
+#elif defined(__AVX2__)
+#define GGML_SA_VEC_DOT(name, Q, G)                                                                                                                              \
+void ggml_vec_dot_##name##_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) { \
+    assert(nrc == 1);                                                                                                                                            \
+    UNUSED(nrc); UNUSED(bx); UNUSED(by); UNUSED(bs);                                                                                                             \
+    *s = ggml_vec_dot_sa_q8_0_avx2(n, (const uint8_t *) vx, (const block_q8_0 *) vy, Q, G);                                                                    \
+}
+#else
+#define GGML_SA_VEC_DOT(name, Q, G)                                                                                                                              \
+void ggml_vec_dot_##name##_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) { \
+    ggml_vec_dot_##name##_q8_0_generic(n, s, bs, vx, bx, vy, by, nrc);                                                                                           \
+}
+#endif
+
+GGML_SA_VEC_DOT(sa2, SA2_Q, SA2_G)
+GGML_SA_VEC_DOT(sa3, SA3_Q, SA3_G)
+GGML_SA_VEC_DOT(sa4, SA4_Q, SA4_G)
+GGML_SA_VEC_DOT(sa2_128, SA2_128_Q, SA2_128_G)
+GGML_SA_VEC_DOT(sa3_128, SA3_128_Q, SA3_128_G)
+GGML_SA_VEC_DOT(sa4_128, SA4_128_Q, SA4_128_G)
+GGML_SA_VEC_DOT(sa2_256, SA2_256_Q, SA2_256_G)
+GGML_SA_VEC_DOT(sa3_256, SA3_256_Q, SA3_256_G)
+GGML_SA_VEC_DOT(sa4_256, SA4_256_Q, SA4_256_G)
+GGML_SA_VEC_DOT(sa5, SA5_Q, SA5_G)
+GGML_SA_VEC_DOT(sa5_128, SA5_128_Q, SA5_128_G)
+GGML_SA_VEC_DOT(sa5_256, SA5_256_Q, SA5_256_G)
+GGML_SA_VEC_DOT(sa6, SA6_Q, SA6_G)
+GGML_SA_VEC_DOT(sa6_128, SA6_128_Q, SA6_128_G)
+GGML_SA_VEC_DOT(sa6_256, SA6_256_Q, SA6_256_G)
+
 void ggml_vec_dot_q2_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);

@@ -174,6 +174,67 @@ void ggml_vec_dot_q1_0_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, c
     *s = sumf;
 }
 
+// ShiftAdd / BCQ: per 32-element chunk and bit-plane, sum_j s_j*y_j = 2*sum_{bit=1} y_j - sum_j y_j
+static inline float ggml_vec_dot_sa_q8_0_impl(int n, const uint8_t * GGML_RESTRICT x, const block_q8_0 * GGML_RESTRICT y, int Q, int G) {
+    assert(n % QK_SA == 0);
+    const int ng = QK_SA / G;
+    const size_t bsz = Q*QK_SA/8 + Q*ng + sizeof(ggml_half);
+    const int nb = n / QK_SA;
+    float sumf = 0.0f;
+    for (int i = 0; i < nb; ++i) {
+        const uint8_t * qs = x + i*bsz;
+        const uint8_t * a  = qs + Q*QK_SA/8;
+        ggml_half dh; memcpy(&dh, a + Q*ng, sizeof(dh));
+        const float d = GGML_CPU_FP16_TO_FP32(dh);
+        float acc = 0.0f;
+        for (int c = 0; c < QK_SA/32; ++c) {
+            const block_q8_0 * yb = &y[i*(QK_SA/32) + c];
+            const float d8 = GGML_CPU_FP16_TO_FP32(yb->d);
+            int ysum = 0;
+            for (int j = 0; j < 32; ++j) ysum += yb->qs[j];
+            const int g = c*32/G;
+            for (int p = 0; p < Q; ++p) {
+                const uint8_t * bits = qs + p*32 + c*4;
+                int pos = 0;
+                for (int j = 0; j < 32; ++j) {
+                    if ((bits[j/8] >> (j%8)) & 1) pos += yb->qs[j];
+                }
+                acc += (float) a[g*Q + p] * d8 * (float)(2*pos - ysum);
+            }
+        }
+        sumf += d * acc;
+    }
+    return sumf;
+}
+
+#define GGML_SA_CPU_IMPL(name, Q, G)                                                                                    \
+void quantize_row_##name(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {                           \
+    quantize_row_##name##_ref(x, (block_##name *) y, k);                                                                \
+}                                                                                                                       \
+void ggml_vec_dot_##name##_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, \
+                                const void * GGML_RESTRICT vy, size_t by, int nrc) {                                   \
+    assert(nrc == 1);                                                                                                   \
+    UNUSED(nrc); UNUSED(bx); UNUSED(by); UNUSED(bs);                                                                    \
+    *s = ggml_vec_dot_sa_q8_0_impl(n, (const uint8_t *) vx, (const block_q8_0 *) vy, Q, G);                            \
+}
+
+GGML_SA_CPU_IMPL(sa2, SA2_Q, SA2_G)
+GGML_SA_CPU_IMPL(sa3, SA3_Q, SA3_G)
+GGML_SA_CPU_IMPL(sa4, SA4_Q, SA4_G)
+GGML_SA_CPU_IMPL(sa2_128, SA2_128_Q, SA2_128_G)
+GGML_SA_CPU_IMPL(sa3_128, SA3_128_Q, SA3_128_G)
+GGML_SA_CPU_IMPL(sa4_128, SA4_128_Q, SA4_128_G)
+GGML_SA_CPU_IMPL(sa2_256, SA2_256_Q, SA2_256_G)
+GGML_SA_CPU_IMPL(sa3_256, SA3_256_Q, SA3_256_G)
+GGML_SA_CPU_IMPL(sa4_256, SA4_256_Q, SA4_256_G)
+GGML_SA_CPU_IMPL(sa5, SA5_Q, SA5_G)
+GGML_SA_CPU_IMPL(sa5_128, SA5_128_Q, SA5_128_G)
+GGML_SA_CPU_IMPL(sa5_256, SA5_256_Q, SA5_256_G)
+GGML_SA_CPU_IMPL(sa6, SA6_Q, SA6_G)
+GGML_SA_CPU_IMPL(sa6_128, SA6_128_Q, SA6_128_G)
+GGML_SA_CPU_IMPL(sa6_256, SA6_256_Q, SA6_256_G)
+
+
 void ggml_vec_dot_q2_0_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
     const int qk = QK2_0;
     const int nb = n / qk;

@@ -6283,6 +6283,21 @@ class GGMLQuantizationType(IntEnum):
     NVFP4   = 40
     Q1_0    = 41
     Q2_0    = 42
+    SA2     = 43
+    SA3     = 44
+    SA4     = 45
+    SA2_128 = 47
+    SA3_128 = 48
+    SA4_128 = 49
+    SA2_256 = 50
+    SA3_256 = 51
+    SA4_256 = 52
+    SA5     = 53
+    SA5_128 = 54
+    SA5_256 = 55
+    SA6     = 56
+    SA6_128 = 57
+    SA6_256 = 58
 
 
 class ExpertGatingFuncType(IntEnum):
@@ -6502,6 +6517,21 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.NVFP4:   (64, 4 + 32),
     GGMLQuantizationType.Q1_0:    (128, 2 + 16),
     GGMLQuantizationType.Q2_0:    (64, 2 + 16),
+    GGMLQuantizationType.SA2:     (256, 2 * 32 + 2 * 4 + 2),
+    GGMLQuantizationType.SA3:     (256, 3 * 32 + 3 * 4 + 2),
+    GGMLQuantizationType.SA4:     (256, 4 * 32 + 4 * 4 + 2),
+    GGMLQuantizationType.SA2_128: (256, 2 * 32 + 2 * 2 + 2),
+    GGMLQuantizationType.SA3_128: (256, 3 * 32 + 3 * 2 + 2),
+    GGMLQuantizationType.SA4_128: (256, 4 * 32 + 4 * 2 + 2),
+    GGMLQuantizationType.SA2_256: (256, 2 * 32 + 2 * 1 + 2),
+    GGMLQuantizationType.SA3_256: (256, 3 * 32 + 3 * 1 + 2),
+    GGMLQuantizationType.SA4_256: (256, 4 * 32 + 4 * 1 + 2),
+    GGMLQuantizationType.SA5: (256, 5 * 32 + 5 * 4 + 2),
+    GGMLQuantizationType.SA5_128: (256, 5 * 32 + 5 * 2 + 2),
+    GGMLQuantizationType.SA5_256: (256, 5 * 32 + 5 * 1 + 2),
+    GGMLQuantizationType.SA6: (256, 6 * 32 + 6 * 4 + 2),
+    GGMLQuantizationType.SA6_128: (256, 6 * 32 + 6 * 2 + 2),
+    GGMLQuantizationType.SA6_256: (256, 6 * 32 + 6 * 1 + 2),
 }
 
 

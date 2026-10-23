@@ -430,7 +430,23 @@ extern "C" {
         GGML_TYPE_NVFP4   = 40, // NVFP4 (4 blocks, E4M3 scale)
         GGML_TYPE_Q1_0    = 41,
         GGML_TYPE_Q2_0    = 42,
-        GGML_TYPE_COUNT   = 43,
+        GGML_TYPE_SA2     = 43, // ShiftAdd BCQ: 2 bit-planes, alpha group 64
+        GGML_TYPE_SA3     = 44, // ShiftAdd BCQ: 3 bit-planes, alpha group 64
+        GGML_TYPE_SA4     = 45, // ShiftAdd BCQ: 4 bit-planes, alpha group 64
+        // 46 is unused
+        GGML_TYPE_SA2_128 = 47, // ShiftAdd BCQ: 2 bit-planes, alpha group 128
+        GGML_TYPE_SA3_128 = 48, // ShiftAdd BCQ: 3 bit-planes, alpha group 128
+        GGML_TYPE_SA4_128 = 49, // ShiftAdd BCQ: 4 bit-planes, alpha group 128
+        GGML_TYPE_SA2_256 = 50, // ShiftAdd BCQ: 2 bit-planes, alpha group 256
+        GGML_TYPE_SA3_256 = 51, // ShiftAdd BCQ: 3 bit-planes, alpha group 256
+        GGML_TYPE_SA4_256 = 52, // ShiftAdd BCQ: 4 bit-planes, alpha group 256
+        GGML_TYPE_SA5     = 53, // ShiftAdd BCQ: 5 bit-planes, alpha group 64
+        GGML_TYPE_SA5_128 = 54, // ShiftAdd BCQ: 5 bit-planes, alpha group 128
+        GGML_TYPE_SA5_256 = 55, // ShiftAdd BCQ: 5 bit-planes, alpha group 256
+        GGML_TYPE_SA6     = 56, // ShiftAdd BCQ: 6 bit-planes, alpha group 64
+        GGML_TYPE_SA6_128 = 57, // ShiftAdd BCQ: 6 bit-planes, alpha group 128
+        GGML_TYPE_SA6_256 = 58, // ShiftAdd BCQ: 6 bit-planes, alpha group 256
+        GGML_TYPE_COUNT   = 59,
     };
 
     // [TAG_GGML_PREC]

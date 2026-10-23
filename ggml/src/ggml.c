@@ -698,6 +698,126 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
         .to_float                 = (ggml_to_float_t) dequantize_row_q2_0,
         .from_float_ref           = (ggml_from_float_t) quantize_row_q2_0_ref,
     },
+    [GGML_TYPE_SA2] = {
+        .type_name                = "sa2",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa2),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa2,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa2_ref,
+    },
+    [GGML_TYPE_SA3] = {
+        .type_name                = "sa3",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa3),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa3,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa3_ref,
+    },
+    [GGML_TYPE_SA4] = {
+        .type_name                = "sa4",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa4),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa4,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa4_ref,
+    },
+    [GGML_TYPE_SA2_128] = {
+        .type_name                = "sa2_128",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa2_128),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa2_128,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa2_128_ref,
+    },
+    [GGML_TYPE_SA3_128] = {
+        .type_name                = "sa3_128",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa3_128),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa3_128,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa3_128_ref,
+    },
+    [GGML_TYPE_SA4_128] = {
+        .type_name                = "sa4_128",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa4_128),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa4_128,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa4_128_ref,
+    },
+    [GGML_TYPE_SA2_256] = {
+        .type_name                = "sa2_256",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa2_256),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa2_256,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa2_256_ref,
+    },
+    [GGML_TYPE_SA3_256] = {
+        .type_name                = "sa3_256",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa3_256),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa3_256,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa3_256_ref,
+    },
+    [GGML_TYPE_SA4_256] = {
+        .type_name                = "sa4_256",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa4_256),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa4_256,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa4_256_ref,
+    },
+    [GGML_TYPE_SA5] = {
+        .type_name                = "sa5",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa5),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa5,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa5_ref,
+    },
+    [GGML_TYPE_SA5_128] = {
+        .type_name                = "sa5_128",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa5_128),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa5_128,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa5_128_ref,
+    },
+    [GGML_TYPE_SA5_256] = {
+        .type_name                = "sa5_256",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa5_256),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa5_256,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa5_256_ref,
+    },
+    [GGML_TYPE_SA6] = {
+        .type_name                = "sa6",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa6),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa6,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa6_ref,
+    },
+    [GGML_TYPE_SA6_128] = {
+        .type_name                = "sa6_128",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa6_128),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa6_128,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa6_128_ref,
+    },
+    [GGML_TYPE_SA6_256] = {
+        .type_name                = "sa6_256",
+        .blck_size                = QK_SA,
+        .type_size                = sizeof(block_sa6_256),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_sa6_256,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_sa6_256_ref,
+    },
     [GGML_TYPE_Q4_0] = {
         .type_name                = "q4_0",
         .blck_size                = QK4_0,
@@ -8145,6 +8265,21 @@ size_t ggml_quantize_chunk(
     switch (type) {
         case GGML_TYPE_Q1_0:    result = quantize_q1_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q2_0:    result = quantize_q2_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA2:     result = quantize_sa2    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA3:     result = quantize_sa3    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA4:     result = quantize_sa4    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA2_128:     result = quantize_sa2_128    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA3_128:     result = quantize_sa3_128    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA4_128:     result = quantize_sa4_128    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA2_256:     result = quantize_sa2_256    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA3_256:     result = quantize_sa3_256    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA4_256:     result = quantize_sa4_256    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA5:     result = quantize_sa5    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA5_128:     result = quantize_sa5_128    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA5_256:     result = quantize_sa5_256    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA6:     result = quantize_sa6    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA6_128:     result = quantize_sa6_128    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+        case GGML_TYPE_SA6_256:     result = quantize_sa6_256    (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q4_0:    result = quantize_q4_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q4_1:    result = quantize_q4_1   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q5_0:    result = quantize_q5_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;

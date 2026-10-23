@@ -191,6 +191,65 @@ typedef struct {
 } block_q2_0;
 static_assert(sizeof(block_q2_0) == sizeof(ggml_half) + QK2_0 / 4, "wrong q2_0 block size/padding");
 
+// ShiftAdd / binary-coding quantization (BCQ): w_j = sum_p d*a[g*Q+p] * (bit_{p,j} ? +1 : -1), g = j/G.
+// A mat-vec is Q sign-add passes over the activations plus one scale per (group, plane).
+#define QK_SA 256
+#define GGML_SA_BLOCK(NAME, Q, G)                                   \
+typedef struct {                                                   \
+    uint8_t   qs[(Q)*QK_SA/8]; /* bit-planes, plane-major */        \
+    uint8_t   a[(Q)*(QK_SA/(G))]; /* alpha codes, a[g*Q + p] */     \
+    uint8_t   d[2];            /* fp16 super-block scale, byte-stored so odd sizes stay unpadded */ \
+} NAME;                                                            \
+static_assert(sizeof(NAME) == (Q)*QK_SA/8 + (Q)*(QK_SA/(G)) + 2, "wrong " #NAME " size/padding");
+
+#define QI_SA (QK_SA / 32)
+#define QR_SA 1
+#define SA2_Q 2
+#define SA2_G 64
+#define SA3_Q 3
+#define SA3_G 64
+#define SA4_Q 4
+#define SA4_G 64
+#define SA2_128_Q 2
+#define SA2_128_G 128
+#define SA3_128_Q 3
+#define SA3_128_G 128
+#define SA4_128_Q 4
+#define SA4_128_G 128
+#define SA2_256_Q 2
+#define SA2_256_G 256
+#define SA3_256_Q 3
+#define SA3_256_G 256
+#define SA4_256_Q 4
+#define SA4_256_G 256
+#define SA5_Q 5
+#define SA5_G 64
+#define SA5_128_Q 5
+#define SA5_128_G 128
+#define SA5_256_Q 5
+#define SA5_256_G 256
+#define SA6_Q 6
+#define SA6_G 64
+#define SA6_128_Q 6
+#define SA6_128_G 128
+#define SA6_256_Q 6
+#define SA6_256_G 256
+GGML_SA_BLOCK(block_sa2, SA2_Q, SA2_G)
+GGML_SA_BLOCK(block_sa3, SA3_Q, SA3_G)
+GGML_SA_BLOCK(block_sa4, SA4_Q, SA4_G)
+GGML_SA_BLOCK(block_sa2_128, SA2_128_Q, SA2_128_G)
+GGML_SA_BLOCK(block_sa3_128, SA3_128_Q, SA3_128_G)
+GGML_SA_BLOCK(block_sa4_128, SA4_128_Q, SA4_128_G)
+GGML_SA_BLOCK(block_sa2_256, SA2_256_Q, SA2_256_G)
+GGML_SA_BLOCK(block_sa3_256, SA3_256_Q, SA3_256_G)
+GGML_SA_BLOCK(block_sa4_256, SA4_256_Q, SA4_256_G)
+GGML_SA_BLOCK(block_sa5, SA5_Q, SA5_G)
+GGML_SA_BLOCK(block_sa5_128, SA5_128_Q, SA5_128_G)
+GGML_SA_BLOCK(block_sa5_256, SA5_256_Q, SA5_256_G)
+GGML_SA_BLOCK(block_sa6, SA6_Q, SA6_G)
+GGML_SA_BLOCK(block_sa6_128, SA6_128_Q, SA6_128_G)
+GGML_SA_BLOCK(block_sa6_256, SA6_256_Q, SA6_256_G)
+
 #define QK4_0 32
 typedef struct {
     ggml_half d;           // delta
