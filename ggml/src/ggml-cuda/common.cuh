@@ -201,7 +201,6 @@ void ggml_cuda_error(const char * stmt, const char * func, const char * file, in
 
 #define CUDA_CHECK(err) CUDA_CHECK_GEN(err, cudaSuccess, cudaGetErrorString)
 
-
 #if CUDART_VERSION >= 12000 || defined(GGML_USE_MUSA)
     static const char * cublas_get_error_str(const cublasStatus_t err) {
         return cublasGetStatusString(err);
@@ -408,7 +407,6 @@ static constexpr __device__ int ggml_cuda_get_max_cpy_bytes() {
 #endif // __CUDA_ARCH__ >= GGML_CUDA_CC_VOLTA
 #endif // defined(GGML_USE_HIP) || defined(GGML_USE_MUSA)
 }
-
 
 [[noreturn]]
 static __device__ void no_device_code(
@@ -997,6 +995,176 @@ struct ggml_cuda_type_traits<GGML_TYPE_Q2_0> {
     static constexpr int bs = sizeof(block_q2_0);
 };
 
+static constexpr __host__ __device__ bool ggml_cuda_type_is_sa(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_SA2: case GGML_TYPE_SA2_128: case GGML_TYPE_SA2_256:
+        case GGML_TYPE_SA3: case GGML_TYPE_SA3_128: case GGML_TYPE_SA3_256:
+        case GGML_TYPE_SA4: case GGML_TYPE_SA4_128: case GGML_TYPE_SA4_256:
+        case GGML_TYPE_SA5: case GGML_TYPE_SA5_128: case GGML_TYPE_SA5_256:
+        case GGML_TYPE_SA6: case GGML_TYPE_SA6_128: case GGML_TYPE_SA6_256:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// fp16 super-block scale of a ShiftAdd block (stored as 2 bytes so odd-sized blocks are unpadded)
+template <typename block_t>
+static __device__ __forceinline__ float ggml_cuda_sa_d(const block_t * x) {
+    return __half2float(__ushort_as_half((unsigned short) (x->d[0] | (x->d[1] << 8))));
+}
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA2> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa2);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA3> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa3);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA4> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa4);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA2_128> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa2_128);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA3_128> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa3_128);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA4_128> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa4_128);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA2_256> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa2_256);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA3_256> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa3_256);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA4_256> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa4_256);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA5> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa5);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA5_128> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa5_128);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA5_256> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa5_256);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA6> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa6);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA6_128> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa6_128);
+};
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_SA6_256> {
+    static constexpr int qk = QK_SA;
+    static constexpr int qr = QR_SA;
+    static constexpr int qi = QI_SA;
+    static constexpr int bs = sizeof(block_sa6_256);
+};
+
+// ShiftAdd / BCQ: plane count and scale group size of an sa* type (0 / QK_SA for other types)
+static constexpr __host__ __device__ int ggml_cuda_sa_planes(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_SA2:     return SA2_Q;
+        case GGML_TYPE_SA3:     return SA3_Q;
+        case GGML_TYPE_SA4:     return SA4_Q;
+        case GGML_TYPE_SA2_128: return SA2_128_Q;
+        case GGML_TYPE_SA3_128: return SA3_128_Q;
+        case GGML_TYPE_SA4_128: return SA4_128_Q;
+        case GGML_TYPE_SA2_256: return SA2_256_Q;
+        case GGML_TYPE_SA3_256: return SA3_256_Q;
+        case GGML_TYPE_SA4_256: return SA4_256_Q;
+        case GGML_TYPE_SA5:     return SA5_Q;
+        case GGML_TYPE_SA5_128: return SA5_128_Q;
+        case GGML_TYPE_SA5_256: return SA5_256_Q;
+        case GGML_TYPE_SA6:     return SA6_Q;
+        case GGML_TYPE_SA6_128: return SA6_128_Q;
+        case GGML_TYPE_SA6_256: return SA6_256_Q;
+        default: return 0;
+    }
+}
+
+static constexpr __host__ __device__ int ggml_cuda_sa_group(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_SA2:     return SA2_G;
+        case GGML_TYPE_SA3:     return SA3_G;
+        case GGML_TYPE_SA4:     return SA4_G;
+        case GGML_TYPE_SA2_128: return SA2_128_G;
+        case GGML_TYPE_SA3_128: return SA3_128_G;
+        case GGML_TYPE_SA4_128: return SA4_128_G;
+        case GGML_TYPE_SA2_256: return SA2_256_G;
+        case GGML_TYPE_SA3_256: return SA3_256_G;
+        case GGML_TYPE_SA4_256: return SA4_256_G;
+        case GGML_TYPE_SA5:     return SA5_G;
+        case GGML_TYPE_SA5_128: return SA5_128_G;
+        case GGML_TYPE_SA5_256: return SA5_256_G;
+        case GGML_TYPE_SA6:     return SA6_G;
+        case GGML_TYPE_SA6_128: return SA6_128_G;
+        case GGML_TYPE_SA6_256: return SA6_256_G;
+        default: return QK_SA;
+    }
+}
+
 template<>
 struct ggml_cuda_type_traits<GGML_TYPE_Q4_0> {
     static constexpr int qk = QK4_0;
@@ -1248,14 +1416,12 @@ struct ggml_cuda_pool_alloc {
     ggml_cuda_pool_alloc& operator=(ggml_cuda_pool_alloc &&) = delete;
 };
 
-
 // backend interface
 
 struct ggml_tensor_extra_gpu {
     void * data_device[GGML_CUDA_MAX_DEVICES]; // 1 pointer for each device for split tensors
     cudaEvent_t events[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS]; // events for synchronizing multiple GPUs
 };
-
 
 #if (defined(GGML_CUDA_USE_GRAPHS) || defined(GGML_HIP_GRAPHS)) || defined(GGML_MUSA_GRAPHS)
 #define USE_CUDA_GRAPH

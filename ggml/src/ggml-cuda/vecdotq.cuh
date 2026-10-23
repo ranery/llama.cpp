@@ -751,6 +751,53 @@ static __device__ __forceinline__ float vec_dot_q1_0_q8_1(
     return d1 * d8 * sumi;
 }
 
+// ShiftAdd / BCQ x q8_1 for MMVQ. A thread handles VDR_SA_Q8_1_MMVQ consecutive 32-element chunks starting at
+// chunk iqs (0..7) of the 256-element super-block.
+// Per bit-plane p: sum_j s_j*y_j = 2*sum_{bit=1} y_j - sum_j y_j, the bit-masked sum done with dp4a on 0/1 bytes,
+// i.e. the inner loop only selects-and-adds activations; scales are applied once per (plane, chunk).
+#define VDR_SA_Q8_1_MMVQ 1 // one chunk per thread was faster than two on A100
+#define VDR_SA_Q8_1_MMQ  VDR_Q8_0_Q8_1_MMQ
+
+template <int Q, int G, typename block_t>
+static __device__ __forceinline__ float vec_dot_sa_q8_1(
+    const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+
+    const block_t * bx = (const block_t *) vbq + kbx;
+
+    float acc = 0.0f;
+#pragma unroll
+    for (int c = 0; c < VDR_SA_Q8_1_MMVQ; ++c) {
+        const int ic = iqs + c;
+        const block_q8_1 * by = bq8_1 + ic;
+        int bits[Q];
+#pragma unroll
+        for (int p = 0; p < Q; ++p) {
+            bits[p] = sizeof(block_t) % 2 == 0 ? get_int_b2(bx->qs, p*8 + ic) : get_int_b1(bx->qs, p*8 + ic);
+        }
+        int sumi[Q];
+#pragma unroll
+        for (int p = 0; p < Q; ++p) {
+            sumi[p] = 0;
+        }
+#pragma unroll
+        for (int k = 0; k < 8; ++k) {
+            const int u = get_int_b4(by->qs, k);
+#pragma unroll
+            for (int p = 0; p < Q; ++p) {
+                const int m = (((bits[p] >> (4*k)) & 0xF) * 0x00204081) & 0x01010101;
+                sumi[p] = ggml_cuda_dp4a(m, u, sumi[p]);
+            }
+        }
+        const float2 ds = __half22float2(by->ds);
+        const int g = ic*32 / G;
+#pragma unroll
+        for (int p = 0; p < Q; ++p) {
+            acc += (float) bx->a[g*Q + p] * (2.0f*ds.x*sumi[p] - ds.y);
+        }
+    }
+    return ggml_cuda_sa_d(bx) * acc;
+}
+
 static __device__ __forceinline__ float vec_dot_q2_0_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
 

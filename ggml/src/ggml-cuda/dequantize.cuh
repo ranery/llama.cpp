@@ -23,6 +23,24 @@ static __device__ __forceinline__ void dequantize_q1_0(const void * vx, const in
     v.y = (2*bit_1 - 1) * d;
 }
 
+// ShiftAdd / BCQ: two consecutive elements (iqs, iqs+1) of super-block ib
+template <int Q, int G, typename block_t>
+static __device__ __forceinline__ void dequantize_sa(const void * vx, const int64_t ib, const int iqs, float2 & v){
+    const block_t * x = (const block_t *) vx + ib;
+    const float d = ggml_cuda_sa_d(x);
+    const int g = iqs / G;
+    float v0 = 0.0f, v1 = 0.0f;
+#pragma unroll
+    for (int p = 0; p < Q; ++p) {
+        const float al = d * x->a[g*Q + p];
+        const int byte = x->qs[p*32 + iqs/8];
+        v0 += ((byte >> (iqs % 8))       & 1) ? al : -al;
+        v1 += ((byte >> ((iqs + 1) % 8)) & 1) ? al : -al;
+    }
+    v.x = v0;
+    v.y = v1;
+}
+
 static __device__ __forceinline__ void dequantize_q2_0(const void * vx, const int64_t ib, const int iqs, float2 & v){
     const block_q2_0 * x = (const block_q2_0 *) vx;
 

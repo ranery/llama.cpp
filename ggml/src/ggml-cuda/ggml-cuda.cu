@@ -5661,6 +5661,21 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                     case GGML_TYPE_IQ3_XXS:
                     case GGML_TYPE_IQ4_NL:
                     case GGML_TYPE_IQ4_XS:
+                    case GGML_TYPE_SA2:
+                    case GGML_TYPE_SA3:
+                    case GGML_TYPE_SA4:
+                    case GGML_TYPE_SA2_128:
+                    case GGML_TYPE_SA3_128:
+                    case GGML_TYPE_SA4_128:
+                    case GGML_TYPE_SA2_256:
+                    case GGML_TYPE_SA3_256:
+                    case GGML_TYPE_SA4_256:
+                    case GGML_TYPE_SA5:
+                    case GGML_TYPE_SA5_128:
+                    case GGML_TYPE_SA5_256:
+                    case GGML_TYPE_SA6:
+                    case GGML_TYPE_SA6_128:
+                    case GGML_TYPE_SA6_256:
                     case GGML_TYPE_BF16:
                         return true;
                     default:
@@ -5678,6 +5693,21 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                     case GGML_TYPE_I32:
                     case GGML_TYPE_Q1_0:
                     case GGML_TYPE_Q2_0:
+                    case GGML_TYPE_SA2:
+                    case GGML_TYPE_SA3:
+                    case GGML_TYPE_SA4:
+                    case GGML_TYPE_SA2_128:
+                    case GGML_TYPE_SA3_128:
+                    case GGML_TYPE_SA4_128:
+                    case GGML_TYPE_SA2_256:
+                    case GGML_TYPE_SA3_256:
+                    case GGML_TYPE_SA4_256:
+                    case GGML_TYPE_SA5:
+                    case GGML_TYPE_SA5_128:
+                    case GGML_TYPE_SA5_256:
+                    case GGML_TYPE_SA6:
+                    case GGML_TYPE_SA6_128:
+                    case GGML_TYPE_SA6_256:
                     case GGML_TYPE_Q4_0:
                     case GGML_TYPE_Q4_1:
                     case GGML_TYPE_Q5_0:

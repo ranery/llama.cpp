@@ -69,6 +69,51 @@ static void ggml_cuda_mul_mat_q_switch_type(ggml_backend_cuda_context & ctx, con
         case GGML_TYPE_IQ4_NL:
             mul_mat_q_case<GGML_TYPE_IQ4_NL, GGML_PREC_Q8>(ctx, args, stream);
             break;
+        case GGML_TYPE_SA2:
+            mul_mat_q_case<GGML_TYPE_SA2, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA3:
+            mul_mat_q_case<GGML_TYPE_SA3, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA4:
+            mul_mat_q_case<GGML_TYPE_SA4, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA2_128:
+            mul_mat_q_case<GGML_TYPE_SA2_128, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA3_128:
+            mul_mat_q_case<GGML_TYPE_SA3_128, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA4_128:
+            mul_mat_q_case<GGML_TYPE_SA4_128, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA2_256:
+            mul_mat_q_case<GGML_TYPE_SA2_256, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA3_256:
+            mul_mat_q_case<GGML_TYPE_SA3_256, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA4_256:
+            mul_mat_q_case<GGML_TYPE_SA4_256, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA5:
+            mul_mat_q_case<GGML_TYPE_SA5, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA5_128:
+            mul_mat_q_case<GGML_TYPE_SA5_128, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA5_256:
+            mul_mat_q_case<GGML_TYPE_SA5_256, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA6:
+            mul_mat_q_case<GGML_TYPE_SA6, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA6_128:
+            mul_mat_q_case<GGML_TYPE_SA6_128, GGML_PREC_Q8>(ctx, args, stream);
+            break;
+        case GGML_TYPE_SA6_256:
+            mul_mat_q_case<GGML_TYPE_SA6_256, GGML_PREC_Q8>(ctx, args, stream);
+            break;
 // -----------------------------------------------------------------------
         case GGML_TYPE_MXFP4:
             // src1 at Q4 uses the native FP4 instructions, which are Blackwell-only
@@ -382,6 +427,21 @@ bool ggml_cuda_should_use_mmq(enum ggml_type type, int cc, int64_t ne11, int64_t
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ4_NL:
+        case GGML_TYPE_SA2:
+        case GGML_TYPE_SA3:
+        case GGML_TYPE_SA4:
+        case GGML_TYPE_SA2_128:
+        case GGML_TYPE_SA3_128:
+        case GGML_TYPE_SA4_128:
+        case GGML_TYPE_SA2_256:
+        case GGML_TYPE_SA3_256:
+        case GGML_TYPE_SA4_256:
+        case GGML_TYPE_SA5:
+        case GGML_TYPE_SA5_128:
+        case GGML_TYPE_SA5_256:
+        case GGML_TYPE_SA6:
+        case GGML_TYPE_SA6_128:
+        case GGML_TYPE_SA6_256:
 // -------------------------------------------------
         case GGML_TYPE_MXFP4:
         case GGML_TYPE_NVFP4:
@@ -403,6 +463,11 @@ bool ggml_cuda_should_use_mmq(enum ggml_type type, int cc, int64_t ne11, int64_t
         if (smpbo < 48 * 1024) {
             return false;
         }
+    }
+
+    // ShiftAdd tiles are expanded from sign planes while loading, which costs more than cuBLAS saves at large batch
+    if (ggml_cuda_type_is_sa(type) && fp16_mma_hardware_available(cc)) {
+        return ne11 < MMQ_DP4A_MAX_BATCH_SIZE;
     }
 
     if (turing_mma_available(cc)) {

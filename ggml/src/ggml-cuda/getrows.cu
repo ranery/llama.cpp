@@ -324,6 +324,66 @@ static void ggml_cuda_get_rows_switch_src0_type(
             get_rows_cuda_q<QK2_0, QR2_0, dequantize_q2_0>(src0_d, src1_d, dst_d,
                 ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
             break;
+        case GGML_TYPE_SA2:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA2_Q, SA2_G, block_sa2>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA3:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA3_Q, SA3_G, block_sa3>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA4:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA4_Q, SA4_G, block_sa4>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA2_128:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA2_128_Q, SA2_128_G, block_sa2_128>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA3_128:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA3_128_Q, SA3_128_G, block_sa3_128>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA4_128:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA4_128_Q, SA4_128_G, block_sa4_128>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA2_256:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA2_256_Q, SA2_256_G, block_sa2_256>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA3_256:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA3_256_Q, SA3_256_G, block_sa3_256>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA4_256:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA4_256_Q, SA4_256_G, block_sa4_256>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA5:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA5_Q, SA5_G, block_sa5>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA5_128:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA5_128_Q, SA5_128_G, block_sa5_128>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA5_256:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA5_256_Q, SA5_256_G, block_sa5_256>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA6:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA6_Q, SA6_G, block_sa6>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA6_128:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA6_128_Q, SA6_128_G, block_sa6_128>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
+        case GGML_TYPE_SA6_256:
+            get_rows_cuda_q<QK_SA, QR_SA, dequantize_sa<SA6_256_Q, SA6_256_G, block_sa6_256>>(src0_d, src1_d, dst_d,
+                ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
+            break;
         case GGML_TYPE_Q4_0:
             get_rows_cuda_q<QK4_0, QR4_0, dequantize_q4_0>(src0_d, src1_d, dst_d,
                 ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);

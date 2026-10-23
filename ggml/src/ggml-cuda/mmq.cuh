@@ -94,6 +94,22 @@ static mmq_q8_1_ds_layout mmq_get_q8_1_ds_layout(const ggml_type type_x) {
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ4_NL:
             return MMQ_Q8_1_DS_LAYOUT_D4;
+        case GGML_TYPE_SA2:
+        case GGML_TYPE_SA3:
+        case GGML_TYPE_SA4:
+        case GGML_TYPE_SA2_128:
+        case GGML_TYPE_SA3_128:
+        case GGML_TYPE_SA4_128:
+        case GGML_TYPE_SA2_256:
+        case GGML_TYPE_SA3_256:
+        case GGML_TYPE_SA4_256:
+        case GGML_TYPE_SA5:
+        case GGML_TYPE_SA5_128:
+        case GGML_TYPE_SA5_256:
+        case GGML_TYPE_SA6:
+        case GGML_TYPE_SA6_128:
+        case GGML_TYPE_SA6_256:
+            return MMQ_Q8_1_DS_LAYOUT_D4;
         default:
             GGML_ABORT("fatal error");
     }
@@ -226,7 +242,13 @@ struct ggml_cuda_mmq_config {
 
 #undef CASE
 
-static __host__ ggml_cuda_mmq_config ggml_cuda_mmq_get_config(const ggml_type type, const int J, const bool fallback, const int cc, const ggml_prec prec_src1) {
+// ShiftAdd types expand to q8_0-layout tiles and share the IQ4_NL configuration
+static constexpr __host__ __device__ ggml_type ggml_cuda_mmq_config_type(ggml_type type) {
+    return ggml_cuda_type_is_sa(type) ? GGML_TYPE_IQ4_NL : type;
+}
+
+static __host__ ggml_cuda_mmq_config ggml_cuda_mmq_get_config(const ggml_type type_in, const int J, const bool fallback, const int cc, const ggml_prec prec_src1) {
+    const ggml_type type = ggml_cuda_mmq_config_type(type_in);
     if (GGML_CUDA_CC_IS_AMD(cc)) {
         if (GGML_CUDA_CC_IS_GCN(cc)) {
             return ggml_cuda_mmq_get_config_gcn(type, J, fallback);
@@ -261,7 +283,8 @@ static __host__ ggml_cuda_mmq_config ggml_cuda_mmq_get_config(const ggml_type ty
     return ggml_cuda_mmq_get_config_pascal_older(type, J, fallback);
 }
 
-static constexpr __device__ ggml_cuda_mmq_config ggml_cuda_mmq_get_config(ggml_type type, int J, bool fallback, ggml_prec prec_src1) {
+static constexpr __device__ ggml_cuda_mmq_config ggml_cuda_mmq_get_config(ggml_type type_in, int J, bool fallback, ggml_prec prec_src1) {
+    const ggml_type type = ggml_cuda_mmq_config_type(type_in);
 #ifdef GGML_USE_HIP
 #ifdef GCN
     return ggml_cuda_mmq_get_config_gcn(type, J, fallback);
@@ -411,6 +434,21 @@ static constexpr __host__ __device__ tile_x_sizes mmq_get_dp4a_tile_x_sizes(ggml
         case GGML_TYPE_IQ1_S:   return MMQ_DP4A_TXS_Q8_0;
         case GGML_TYPE_IQ4_XS:  return MMQ_DP4A_TXS_Q8_0;
         case GGML_TYPE_IQ4_NL:  return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA2:     return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA3:     return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA4:     return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA2_128: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA3_128: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA4_128: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA2_256: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA3_256: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA4_256: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA5:     return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA5_128: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA5_256: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA6:     return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA6_128: return MMQ_DP4A_TXS_Q8_0;
+        case GGML_TYPE_SA6_256: return MMQ_DP4A_TXS_Q8_0;
         default:                return tile_x_sizes{0, 0, 0};
     }
 }
@@ -659,6 +697,26 @@ static constexpr __device__ ggml_cuda_mmq_util_funcs ggml_cuda_mmq_get_util_func
                     ggml_cuda_mmq_load_tiles_iq4_nl<type, J, fallback>,
                     ggml_cuda_mmq_vec_dot_q8_0_q8_1_dp4a<type, J, fallback>,
                     ggml_cuda_mmq_write_back_dp4a<type, J, fallback, prec_src1>);
+            case GGML_TYPE_SA2:
+            case GGML_TYPE_SA3:
+            case GGML_TYPE_SA4:
+            case GGML_TYPE_SA2_128:
+            case GGML_TYPE_SA3_128:
+            case GGML_TYPE_SA4_128:
+            case GGML_TYPE_SA2_256:
+            case GGML_TYPE_SA3_256:
+            case GGML_TYPE_SA4_256:
+            case GGML_TYPE_SA5:
+            case GGML_TYPE_SA5_128:
+            case GGML_TYPE_SA5_256:
+            case GGML_TYPE_SA6:
+            case GGML_TYPE_SA6_128:
+            case GGML_TYPE_SA6_256:
+                return ggml_cuda_mmq_util_funcs(
+                    VDR_SA_Q8_1_MMQ,
+                    ggml_cuda_mmq_load_tiles_sa<type, J, fallback>,
+                    ggml_cuda_mmq_vec_dot_q8_0_q8_1_dp4a<type, J, fallback>,
+                    ggml_cuda_mmq_write_back_dp4a<type, J, fallback, prec_src1>);
 // ---------------------------------------------------------------------------------------------
             case GGML_TYPE_MXFP4:
                 return ggml_cuda_mmq_util_funcs(
@@ -827,6 +885,26 @@ static constexpr __device__ ggml_cuda_mmq_util_funcs ggml_cuda_mmq_get_util_func
             return ggml_cuda_mmq_util_funcs(
                 -1,
                 ggml_cuda_mmq_load_tiles_iq4_nl<type, J, fallback>,
+                ggml_cuda_mmq_vec_dot_q8_0_q8_1_mma<type, J, fallback, MMQ_Q8_1_DS_LAYOUT_D4>,
+                ggml_cuda_mmq_write_back_mma<type, J, fallback, prec_src1>);
+        case GGML_TYPE_SA2:
+        case GGML_TYPE_SA3:
+        case GGML_TYPE_SA4:
+        case GGML_TYPE_SA2_128:
+        case GGML_TYPE_SA3_128:
+        case GGML_TYPE_SA4_128:
+        case GGML_TYPE_SA2_256:
+        case GGML_TYPE_SA3_256:
+        case GGML_TYPE_SA4_256:
+        case GGML_TYPE_SA5:
+        case GGML_TYPE_SA5_128:
+        case GGML_TYPE_SA5_256:
+        case GGML_TYPE_SA6:
+        case GGML_TYPE_SA6_128:
+        case GGML_TYPE_SA6_256:
+            return ggml_cuda_mmq_util_funcs(
+                -1,
+                ggml_cuda_mmq_load_tiles_sa<type, J, fallback>,
                 ggml_cuda_mmq_vec_dot_q8_0_q8_1_mma<type, J, fallback, MMQ_Q8_1_DS_LAYOUT_D4>,
                 ggml_cuda_mmq_write_back_mma<type, J, fallback, prec_src1>);
 // ---------------------------------------------------------------------------------------------
@@ -1572,6 +1650,21 @@ extern DECL_MMQ_CASE(GGML_TYPE_IQ2_S);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ3_XXS);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ3_S);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ4_NL);
+extern DECL_MMQ_CASE(GGML_TYPE_SA2);
+extern DECL_MMQ_CASE(GGML_TYPE_SA3);
+extern DECL_MMQ_CASE(GGML_TYPE_SA4);
+extern DECL_MMQ_CASE(GGML_TYPE_SA2_128);
+extern DECL_MMQ_CASE(GGML_TYPE_SA3_128);
+extern DECL_MMQ_CASE(GGML_TYPE_SA4_128);
+extern DECL_MMQ_CASE(GGML_TYPE_SA2_256);
+extern DECL_MMQ_CASE(GGML_TYPE_SA3_256);
+extern DECL_MMQ_CASE(GGML_TYPE_SA4_256);
+extern DECL_MMQ_CASE(GGML_TYPE_SA5);
+extern DECL_MMQ_CASE(GGML_TYPE_SA5_128);
+extern DECL_MMQ_CASE(GGML_TYPE_SA5_256);
+extern DECL_MMQ_CASE(GGML_TYPE_SA6);
+extern DECL_MMQ_CASE(GGML_TYPE_SA6_128);
+extern DECL_MMQ_CASE(GGML_TYPE_SA6_256);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ4_XS);
 // -----------------------------------------
 extern DECL_MMQ_CASE(GGML_TYPE_MXFP4);

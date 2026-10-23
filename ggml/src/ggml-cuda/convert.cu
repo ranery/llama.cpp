@@ -275,6 +275,39 @@ static void dequantize_block_q8_0_f16_cuda(const void * __restrict__ vx, half * 
     }
 }
 
+
+// ShiftAdd / BCQ: one warp per 256-element super-block, each thread expands one byte of every bit-plane (8 elements)
+template <int Q, int G, typename block_t, typename dst_t>
+static __global__ void dequantize_block_sa(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    const int64_t i = blockIdx.x;
+    const block_t * x = (const block_t *) vx + i;
+    const int t = threadIdx.x; // 0..31 -> elements 8t..8t+7
+    const float d = ggml_cuda_sa_d(x);
+    const int g = 8*t / G;
+    float v[8] = {0.0f};
+#pragma unroll
+    for (int p = 0; p < Q; ++p) {
+        const float al = d * x->a[g*Q + p];
+        const int byte = x->qs[p*32 + t];
+#pragma unroll
+        for (int l = 0; l < 8; ++l) {
+            v[l] += ((byte >> l) & 1) ? al : -al;
+        }
+    }
+    dst_t * y = yy + i*QK_SA + 8*t;
+#pragma unroll
+    for (int l = 0; l < 8; ++l) {
+        y[l] = ggml_cuda_cast<dst_t>(v[l]);
+    }
+}
+
+template <int Q, int G, typename block_t, typename dst_t>
+static void dequantize_row_sa_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
+    const int64_t nb = k / QK_SA;
+    dequantize_block_sa<Q, G, block_t><<<nb, 32, 0, stream>>>(vx, y);
+}
+
+
 template<typename dst_t>
 static void dequantize_row_q2_K_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
     const int nb = k / QK_K;
@@ -499,6 +532,36 @@ to_bf16_cuda_t ggml_get_to_bf16_cuda(ggml_type type) {
             return dequantize_block_cont_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cont_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_row_sa_cuda<SA2_Q, SA2_G, block_sa2>;
+        case GGML_TYPE_SA3:
+            return dequantize_row_sa_cuda<SA3_Q, SA3_G, block_sa3>;
+        case GGML_TYPE_SA4:
+            return dequantize_row_sa_cuda<SA4_Q, SA4_G, block_sa4>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_row_sa_cuda<SA2_128_Q, SA2_128_G, block_sa2_128>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_row_sa_cuda<SA3_128_Q, SA3_128_G, block_sa3_128>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_row_sa_cuda<SA4_128_Q, SA4_128_G, block_sa4_128>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_row_sa_cuda<SA2_256_Q, SA2_256_G, block_sa2_256>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_row_sa_cuda<SA3_256_Q, SA3_256_G, block_sa3_256>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_row_sa_cuda<SA4_256_Q, SA4_256_G, block_sa4_256>;
+        case GGML_TYPE_SA5:
+            return dequantize_row_sa_cuda<SA5_Q, SA5_G, block_sa5>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_row_sa_cuda<SA5_128_Q, SA5_128_G, block_sa5_128>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_row_sa_cuda<SA5_256_Q, SA5_256_G, block_sa5_256>;
+        case GGML_TYPE_SA6:
+            return dequantize_row_sa_cuda<SA6_Q, SA6_G, block_sa6>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_row_sa_cuda<SA6_128_Q, SA6_128_G, block_sa6_128>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_row_sa_cuda<SA6_256_Q, SA6_256_G, block_sa6_256>;
         case GGML_TYPE_Q4_0:
             return dequantize_row_q4_0_cuda;
         case GGML_TYPE_Q4_1:
@@ -556,6 +619,36 @@ to_fp16_cuda_t ggml_get_to_fp16_cuda(ggml_type type) {
             return dequantize_block_cont_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cont_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_row_sa_cuda<SA2_Q, SA2_G, block_sa2>;
+        case GGML_TYPE_SA3:
+            return dequantize_row_sa_cuda<SA3_Q, SA3_G, block_sa3>;
+        case GGML_TYPE_SA4:
+            return dequantize_row_sa_cuda<SA4_Q, SA4_G, block_sa4>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_row_sa_cuda<SA2_128_Q, SA2_128_G, block_sa2_128>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_row_sa_cuda<SA3_128_Q, SA3_128_G, block_sa3_128>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_row_sa_cuda<SA4_128_Q, SA4_128_G, block_sa4_128>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_row_sa_cuda<SA2_256_Q, SA2_256_G, block_sa2_256>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_row_sa_cuda<SA3_256_Q, SA3_256_G, block_sa3_256>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_row_sa_cuda<SA4_256_Q, SA4_256_G, block_sa4_256>;
+        case GGML_TYPE_SA5:
+            return dequantize_row_sa_cuda<SA5_Q, SA5_G, block_sa5>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_row_sa_cuda<SA5_128_Q, SA5_128_G, block_sa5_128>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_row_sa_cuda<SA5_256_Q, SA5_256_G, block_sa5_256>;
+        case GGML_TYPE_SA6:
+            return dequantize_row_sa_cuda<SA6_Q, SA6_G, block_sa6>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_row_sa_cuda<SA6_128_Q, SA6_128_G, block_sa6_128>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_row_sa_cuda<SA6_256_Q, SA6_256_G, block_sa6_256>;
         case GGML_TYPE_Q4_0:
             return dequantize_row_q4_0_cuda;
         case GGML_TYPE_Q4_1:
@@ -616,6 +709,36 @@ to_fp32_cuda_t ggml_get_to_fp32_cuda(ggml_type type) {
             return dequantize_block_cont_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cont_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_row_sa_cuda<SA2_Q, SA2_G, block_sa2>;
+        case GGML_TYPE_SA3:
+            return dequantize_row_sa_cuda<SA3_Q, SA3_G, block_sa3>;
+        case GGML_TYPE_SA4:
+            return dequantize_row_sa_cuda<SA4_Q, SA4_G, block_sa4>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_row_sa_cuda<SA2_128_Q, SA2_128_G, block_sa2_128>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_row_sa_cuda<SA3_128_Q, SA3_128_G, block_sa3_128>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_row_sa_cuda<SA4_128_Q, SA4_128_G, block_sa4_128>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_row_sa_cuda<SA2_256_Q, SA2_256_G, block_sa2_256>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_row_sa_cuda<SA3_256_Q, SA3_256_G, block_sa3_256>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_row_sa_cuda<SA4_256_Q, SA4_256_G, block_sa4_256>;
+        case GGML_TYPE_SA5:
+            return dequantize_row_sa_cuda<SA5_Q, SA5_G, block_sa5>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_row_sa_cuda<SA5_128_Q, SA5_128_G, block_sa5_128>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_row_sa_cuda<SA5_256_Q, SA5_256_G, block_sa5_256>;
+        case GGML_TYPE_SA6:
+            return dequantize_row_sa_cuda<SA6_Q, SA6_G, block_sa6>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_row_sa_cuda<SA6_128_Q, SA6_128_G, block_sa6_128>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_row_sa_cuda<SA6_256_Q, SA6_256_G, block_sa6_256>;
         case GGML_TYPE_Q4_0:
             return dequantize_row_q4_0_cuda;
         case GGML_TYPE_Q4_1:
@@ -675,6 +798,36 @@ to_fp16_nc_cuda_t ggml_get_to_fp16_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_Q, SA2_G, block_sa2>>;
+        case GGML_TYPE_SA3:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_Q, SA3_G, block_sa3>>;
+        case GGML_TYPE_SA4:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_Q, SA4_G, block_sa4>>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_128_Q, SA2_128_G, block_sa2_128>>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_128_Q, SA3_128_G, block_sa3_128>>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_128_Q, SA4_128_G, block_sa4_128>>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_256_Q, SA2_256_G, block_sa2_256>>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_256_Q, SA3_256_G, block_sa3_256>>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_256_Q, SA4_256_G, block_sa4_256>>;
+        case GGML_TYPE_SA5:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_Q, SA5_G, block_sa5>>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_128_Q, SA5_128_G, block_sa5_128>>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_256_Q, SA5_256_G, block_sa5_256>>;
+        case GGML_TYPE_SA6:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_Q, SA6_G, block_sa6>>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_128_Q, SA6_128_G, block_sa6_128>>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_256_Q, SA6_256_G, block_sa6_256>>;
         case GGML_TYPE_Q4_0:
             return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
         case GGML_TYPE_Q4_1:
@@ -700,6 +853,36 @@ to_bf16_nc_cuda_t ggml_get_to_bf16_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_Q, SA2_G, block_sa2>>;
+        case GGML_TYPE_SA3:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_Q, SA3_G, block_sa3>>;
+        case GGML_TYPE_SA4:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_Q, SA4_G, block_sa4>>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_128_Q, SA2_128_G, block_sa2_128>>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_128_Q, SA3_128_G, block_sa3_128>>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_128_Q, SA4_128_G, block_sa4_128>>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_256_Q, SA2_256_G, block_sa2_256>>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_256_Q, SA3_256_G, block_sa3_256>>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_256_Q, SA4_256_G, block_sa4_256>>;
+        case GGML_TYPE_SA5:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_Q, SA5_G, block_sa5>>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_128_Q, SA5_128_G, block_sa5_128>>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_256_Q, SA5_256_G, block_sa5_256>>;
+        case GGML_TYPE_SA6:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_Q, SA6_G, block_sa6>>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_128_Q, SA6_128_G, block_sa6_128>>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_256_Q, SA6_256_G, block_sa6_256>>;
         case GGML_TYPE_Q4_0:
             return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
         case GGML_TYPE_Q4_1:
@@ -725,6 +908,36 @@ to_fp32_nc_cuda_t ggml_get_to_fp32_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK1_0, QR1_0, dequantize_q1_0>;
         case GGML_TYPE_Q2_0:
             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+        case GGML_TYPE_SA2:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_Q, SA2_G, block_sa2>>;
+        case GGML_TYPE_SA3:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_Q, SA3_G, block_sa3>>;
+        case GGML_TYPE_SA4:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_Q, SA4_G, block_sa4>>;
+        case GGML_TYPE_SA2_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_128_Q, SA2_128_G, block_sa2_128>>;
+        case GGML_TYPE_SA3_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_128_Q, SA3_128_G, block_sa3_128>>;
+        case GGML_TYPE_SA4_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_128_Q, SA4_128_G, block_sa4_128>>;
+        case GGML_TYPE_SA2_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA2_256_Q, SA2_256_G, block_sa2_256>>;
+        case GGML_TYPE_SA3_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA3_256_Q, SA3_256_G, block_sa3_256>>;
+        case GGML_TYPE_SA4_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA4_256_Q, SA4_256_G, block_sa4_256>>;
+        case GGML_TYPE_SA5:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_Q, SA5_G, block_sa5>>;
+        case GGML_TYPE_SA5_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_128_Q, SA5_128_G, block_sa5_128>>;
+        case GGML_TYPE_SA5_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA5_256_Q, SA5_256_G, block_sa5_256>>;
+        case GGML_TYPE_SA6:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_Q, SA6_G, block_sa6>>;
+        case GGML_TYPE_SA6_128:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_128_Q, SA6_128_G, block_sa6_128>>;
+        case GGML_TYPE_SA6_256:
+            return dequantize_block_cuda<QK_SA, QR_SA, dequantize_sa<SA6_256_Q, SA6_256_G, block_sa6_256>>;
         case GGML_TYPE_Q4_0:
             return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
         case GGML_TYPE_Q4_1:
